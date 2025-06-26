@@ -449,4 +449,56 @@ Resources:
                   backend-deployment.yaml
               OutputArtifacts: []
               RunOrder: 1
- 
+
+
+---
+### === Part 5: S3 Bucket with VPC Endpoint Access Restriction ===
+
+  S3VpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      # RouteTableIds: # Uncomment and specify if you want to associate with specific route tables
+      #   - !Ref PrivateRouteTable
+      VpcEndpointType: Gateway
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "*"
+            Resource: "*"
+
+  RestrictedS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: your-unique-restricted-s3-bucket-name # IMPORTANT: Replace with a globally unique name
+      Tags:
+        - Key: Name
+          Value: restricted-s3-bucket
+      BucketPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAccessFromVpcEndpoint
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${RestrictedS3Bucket}"
+              - !Sub "arn:aws:s3:::${RestrictedS3Bucket}/*"
+            Condition:
+              StringEquals:
+                aws:SourceVpce: !GetAtt S3VpcEndpoint.Id
+          - Sid: DenyAccessOutsideVpcEndpoint
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${RestrictedS3Bucket}"
+              - !Sub "arn:aws:s3:::${RestrictedS3Bucket}/*"
+            Condition:
+              StringNotEquals:
+                aws:SourceVpce: !GetAtt S3VpcEndpoint.Id
+              NotIpAddress:
+                aws:SourceIp: "127.0.0.1/32" # Allow localhost for certain AWS internal processes if needed. Adjust as necessary.
